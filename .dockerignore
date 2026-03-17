@@ -1,0 +1,53 @@
+# Git
+.git
+.gitignore
+
+# IDEs
+.vscode
+.idea
+*.swp
+*.swo
+
+# Archivos de desarrollo
+.env
+.env.*
+!.env.example
+
+# Dependencias de desarrollo
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Tests
+phpunit.xml
+.phpunit.result.cache
+tests/
+
+# Documentación
+README.md
+docs/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Bases de datos
+*.sqlite
+*.sqlite3
+
+# Logs
+storage/logs/*.log
+*.log
+
+# Cache
+bootstrap/cache/*.php
+!bootstrap/cache/.gitignore
+
+# Varios
+cookies.txt
+Thumbs.db
+.DS_Store
+
+# Ignorar la carpeta restaurante-mvc del contexto de build
+# ya que se copia específicamente en el Dockerfile
