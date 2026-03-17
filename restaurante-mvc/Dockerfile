@@ -1,5 +1,10 @@
 FROM php:8.2-apache
 
+# Instalar dependencias del sistema para PostgreSQL
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # Instalar Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
