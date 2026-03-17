@@ -1,8 +1,9 @@
 FROM php:8.2-apache
 
-# Instalar dependencias del sistema para PostgreSQL
+# Instalar dependencias del sistema para PostgreSQL y extensiones PHP
 RUN apt-get update && apt-get install -y \
     libpq-dev \
+    libonig-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar Composer
