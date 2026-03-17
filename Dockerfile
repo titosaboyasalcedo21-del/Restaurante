@@ -1,10 +1,24 @@
 FROM php:8.2-apache
 
+# Instalar dependencias del sistema incluyendo librerías de PostgreSQL
+RUN apt-get update && apt-get install -y \
+    libzip-dev \
+    zip \
+    unzip \
+    libpng-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
+    libonig-dev \
+    libxml2-dev \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # Instalar Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Instalar extensiones necesarias de PHP
-RUN docker-php-ext-install pdo pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd zip
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd zip
 
 # Habilitar mod_rewrite para Apache
 RUN a2enmod rewrite
