@@ -1,6 +1,6 @@
 FROM php:8.2-apache
 
-# Instalar dependencias del sistema incluyendo librerías de PostgreSQL
+# Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y \
     libzip-dev \
     zip \
@@ -10,7 +10,6 @@ RUN apt-get update && apt-get install -y \
     libfreetype6-dev \
     libonig-dev \
     libxml2-dev \
-    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar Composer
