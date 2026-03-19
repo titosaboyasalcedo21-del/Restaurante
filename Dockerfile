@@ -10,10 +10,15 @@ RUN apt-get update && apt-get install -y \
     libfreetype6-dev \
     libonig-dev \
     libxml2-dev \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Configurar Composer
+ENV COMPOSER_HOME=/tmp/composer
+ENV COMPOSER_ALLOW_SUPERUSER=1
 
 # Instalar extensiones necesarias de PHP
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
@@ -25,12 +30,12 @@ RUN a2enmod rewrite
 # Copiar toda la aplicación
 COPY restaurante-mvc /var/www/html
 
-# Instalar dependencias de Composer
+# Instalar dependencias de Composer con output detallado
 WORKDIR /var/www/html
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+RUN composer install --no-dev --optimize-autoloader --no-interaction --verbose --prefer-dist || echo "COMPOSER FAILED"
 
 # Verificar que vendor existe
-RUN ls -la /var/www/html/vendor/ || echo "VENDOR NOT FOUND"
+RUN ls -la /var/www/html/vendor/ || echo "VENDOR NOT FOUND AFTER COMPOSER"
 
 # Establecer permisos
 RUN chown -R www-data:www-data /var/www/html \
