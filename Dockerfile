@@ -30,9 +30,9 @@ RUN a2enmod rewrite
 # Copiar toda la aplicación
 COPY restaurante-mvc /var/www/html
 
-# Instalar dependencias de Composer con output detallado
+# Instalar dependencias de Composer (ignorar requisitos de PHP)
 WORKDIR /var/www/html
-RUN composer install --no-dev --optimize-autoloader --no-interaction --verbose --prefer-dist || echo "COMPOSER FAILED"
+RUN composer install --no-dev --optimize-autoloader --no-interaction --ignore-platform-reqs
 
 # Verificar que vendor existe
 RUN ls -la /var/www/html/vendor/ || echo "VENDOR NOT FOUND AFTER COMPOSER"
