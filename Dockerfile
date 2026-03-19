@@ -22,15 +22,15 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
 # Habilitar mod_rewrite para Apache
 RUN a2enmod rewrite
 
-# Copiar composer.json y lock primero para caché
-COPY restaurante-mvc/composer.json restaurante-mvc/composer.lock /var/www/html/
+# Copiar toda la aplicación
+COPY restaurante-mvc /var/www/html
 
 # Instalar dependencias de Composer
 WORKDIR /var/www/html
-RUN composer install --no-dev --optimize-autoloader --no-interaction --no-cache
+RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# Copiar el resto de la aplicación
-COPY restaurante-mvc /var/www/html
+# Verificar que vendor existe
+RUN ls -la /var/www/html/vendor/ || echo "VENDOR NOT FOUND"
 
 # Establecer permisos
 RUN chown -R www-data:www-data /var/www/html \
