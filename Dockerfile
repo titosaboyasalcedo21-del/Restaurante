@@ -48,4 +48,9 @@ RUN chmod +x /entrypoint.sh
 # Puerto para Apache
 EXPOSE 80
 
+# Configurar Apache para servir desde public
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf \
+    && echo "<Directory /var/www/html/public>\n    AllowOverride All\n    Options -Indexes +FollowSymLinks\n</Directory>" >> /etc/apache2/apache2.conf \
+    && sed -i 's|/var/www/html|/var/www/html/public|g' /etc/apache2/sites-available/000-default.conf
+
 ENTRYPOINT ["/entrypoint.sh"]
