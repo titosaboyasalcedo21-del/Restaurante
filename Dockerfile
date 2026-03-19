@@ -22,6 +22,10 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
 # Copiar archivos de la aplicación desde la subcarpeta
 COPY restaurante-mvc /var/www/html
 
+# Instalar dependencias de Composer (en tiempo de build)
+WORKDIR /var/www/html
+RUN composer install --no-dev --optimize-autoloader --no-interaction
+
 # Establecer permisos
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html/storage /var/www/html/bootstrap/cache
