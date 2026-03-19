@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Puerto para Render (variable $PORT o 10000 por defecto)
+PORT=${PORT:-10000}
+
 # Cambiar al directorio de la aplicación
 cd /var/www/html
 
@@ -14,5 +17,5 @@ php artisan key:generate --force
 # Ejecutar migraciones
 php artisan migrate --force
 
-# Iniciar Apache
-apache2-foreground
+# Iniciar servidor Laravel en el puerto de Render
+php artisan serve --host=0.0.0.0 --port=$PORT

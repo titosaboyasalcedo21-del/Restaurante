@@ -1,4 +1,4 @@
-FROM php:8.2-apache
+FROM php:8.2-cli
 
 # Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y \
@@ -17,10 +17,7 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Instalar extensiones necesarias de PHP
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo pdo_mysql mbstring exif pcntl bcmath gd zip
-
-# Habilitar mod_rewrite para Apache
-RUN a2enmod rewrite
+    && docker-php-ext-install pdo pdo_mysql pdo_pgsql mbstring exif pcntl bcmath gd zip
 
 # Copiar archivos de la aplicación desde la subcarpeta
 COPY restaurante-mvc /var/www/html
@@ -33,7 +30,7 @@ RUN chown -R www-data:www-data /var/www/html \
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Exponer puerto 80
-EXPOSE 80
+# Exponer puerto (Render usa $PORT, por defecto 10000)
+EXPOSE 10000
 
 ENTRYPOINT ["/entrypoint.sh"]
