@@ -42,11 +42,13 @@ class BranchApiController extends Controller
 
     public function show(Branch $branch): JsonResponse
     {
+        $this->authorize('view', $branch);
         return response()->json($branch->load('products'));
     }
 
     public function update(Request $request, Branch $branch): JsonResponse
     {
+        $this->authorize('update', $branch);
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'code' => 'sometimes|string|unique:branches,code,' . $branch->id,
@@ -70,6 +72,7 @@ class BranchApiController extends Controller
 
     public function destroy(Branch $branch): JsonResponse
     {
+        $this->authorize('delete', $branch);
         if ($branch->inventoryMovements()->count() > 0) {
             return response()->json(['error' => 'La sucursal tiene movimientos de inventario'], 422);
         }
@@ -81,6 +84,7 @@ class BranchApiController extends Controller
 
     public function inventory(Branch $branch): JsonResponse
     {
+        $this->authorize('view', $branch);
         $products = $branch->products()->with('category')->get()->map(function ($product) {
             return [
                 'id' => $product->id,

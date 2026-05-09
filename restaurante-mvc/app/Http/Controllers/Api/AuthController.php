@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
@@ -56,8 +57,9 @@ class AuthController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
-            'password' => 'required|string|min:8|confirmed',
+            'password' => ['required', 'string', Password::min(8)->letters()->numbers(), 'confirmed'],
             'role' => 'sometimes|in:admin,manager,employee',
+            'branch_id' => 'nullable|exists:branches,id',
         ]);
 
         $user = User::create([
@@ -65,15 +67,13 @@ class AuthController extends Controller
             'email' => $request->email,
             'password' => $request->password,
             'role' => $request->role ?? 'employee',
+            'branch_id' => $request->branch_id,
             'is_active' => true,
         ]);
 
-        $token = $user->createToken('api-token', ['*'])->plainTextToken;
-
         return response()->json([
             'user' => $user,
-            'token' => $token,
-            'message' => 'Usuario registrado exitosamente',
+            'message' => 'Usuario registrado exitosamente por el administrador',
         ], 201);
     }
 
@@ -106,7 +106,7 @@ class AuthController extends Controller
     {
         $request->validate([
             'current_password' => 'required',
-            'password' => 'required|string|min:8|confirmed',
+            'password' => ['required', 'string', Password::min(8)->letters()->numbers(), 'confirmed'],
         ]);
 
         $user = $request->user();

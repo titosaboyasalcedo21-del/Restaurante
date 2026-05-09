@@ -10,6 +10,7 @@ use App\Models\Branch;
 use App\Models\InventoryMovement;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class PurchaseOrderController extends Controller
 {
@@ -59,7 +60,7 @@ class PurchaseOrderController extends Controller
         ]);
 
         $validated['order_number'] = PurchaseOrder::generateOrderNumber();
-        $validated['user_id'] = auth()->id();
+        $validated['user_id'] = Auth::id();
         $validated['status'] = PurchaseOrder::STATUS_DRAFT;
 
         $order = PurchaseOrder::create($validated);
@@ -182,41 +183,46 @@ class PurchaseOrderController extends Controller
 
             // Add inventory for each item
             foreach ($purchaseOrder->items as $item) {
-                // Get or create branch_product pivot
-                $exists = DB::table('branch_product')
+                // Read the actual current stock BEFORE any changes
+                $pivot = DB::table('branch_product')
                     ->where('branch_id', $purchaseOrder->branch_id)
                     ->where('product_id', $item->product_id)
-                    ->exists();
+                    ->first();
 
-                if (!$exists) {
+                $previousStock = $pivot ? $pivot->stock : 0;
+
+                if (!$pivot) {
+                    // Product not yet assigned to this branch — create pivot row
                     DB::table('branch_product')->insert([
-                        'branch_id' => $purchaseOrder->branch_id,
-                        'product_id' => $item->product_id,
-                        'stock' => 0,
+                        'branch_id'    => $purchaseOrder->branch_id,
+                        'product_id'   => $item->product_id,
+                        'stock'        => 0,
                         'is_available' => true,
                     ]);
                 }
 
-                // Update stock
+                $newStock = $previousStock + $item->quantity;
+
+                // Increment stock in branch_product
                 DB::table('branch_product')
                     ->where('branch_id', $purchaseOrder->branch_id)
                     ->where('product_id', $item->product_id)
-                    ->increment('stock', $item->quantity);
+                    ->update(['stock' => $newStock]);
 
-                // Create inventory movement
+                // Create inventory movement with correct stock values
                 InventoryMovement::create([
-                    'product_id' => $item->product_id,
-                    'branch_id' => $purchaseOrder->branch_id,
-                    'type' => InventoryMovement::TYPE_IN,
-                    'quantity' => $item->quantity,
-                    'previous_stock' => $item->quantity_received,
-                    'new_stock' => $item->quantity_received + $item->quantity,
-                    'reason' => 'Recepción de orden de compra: ' . $purchaseOrder->order_number,
-                    'reference' => $purchaseOrder->order_number,
-                    'user_id' => auth()->id(),
+                    'product_id'     => $item->product_id,
+                    'branch_id'      => $purchaseOrder->branch_id,
+                    'type'           => InventoryMovement::TYPE_IN,
+                    'quantity'       => $item->quantity,
+                    'previous_stock' => $previousStock,
+                    'new_stock'      => $newStock,
+                    'reason'         => 'Recepción de orden de compra: ' . $purchaseOrder->order_number,
+                    'reference'      => $purchaseOrder->order_number,
+                    'user_id'        => Auth::id(),
                 ]);
 
-                // Update quantity received
+                // Update quantity received on the order item
                 $item->update(['quantity_received' => $item->quantity_received + $item->quantity]);
             }
         });

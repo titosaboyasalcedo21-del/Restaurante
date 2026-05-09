@@ -13,12 +13,16 @@ class RoleMiddleware
      */
     public function handle(Request $request, Closure $next, string $role): Response
     {
-        if (!$request->user()) {
+        $user = $request->user();
+
+        if (!$user) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'No autenticado'], 401);
+            }
             return redirect()->route('login');
         }
 
-        $userRole = $request->user()->role;
-        $safeRole = is_string($userRole) ? strtolower(trim($userRole)) : '';
+        $userRole = is_string($user->role) ? strtolower(trim($user->role)) : '';
 
         $roles = [
             'admin' => 3,
@@ -27,9 +31,14 @@ class RoleMiddleware
         ];
 
         $requiredLevel = $roles[$role] ?? 0;
-        $userLevel = $roles[$safeRole] ?? 0;
+        $userLevel = $roles[$userRole] ?? 0;
 
         if ($userLevel < $requiredLevel) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'No tienes permiso para acceder a este recurso. Se requiere nivel: ' . $role,
+                ], 403);
+            }
             abort(403, 'No tienes permiso para acceder a esta sección.');
         }
 

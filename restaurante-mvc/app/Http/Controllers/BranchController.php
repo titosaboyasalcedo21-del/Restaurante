@@ -6,6 +6,7 @@ use App\Models\Branch;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class BranchController extends Controller
 {
@@ -14,7 +15,8 @@ class BranchController extends Controller
      */
     private function getManagerBranchId(): ?int
     {
-        $user = auth()->user();
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
         if ($user && $user->isManager() && $user->branch_id) {
             return $user->branch_id;
         }
@@ -26,7 +28,8 @@ class BranchController extends Controller
      */
     private function canAccessBranch(Branch $branch): bool
     {
-        $user = auth()->user();
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
 
         // Admin can access any branch
         if ($user->isAdmin()) {

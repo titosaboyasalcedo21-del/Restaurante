@@ -8,10 +8,12 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Laravel\Sanctum\HasApiTokens;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable, HasApiTokens;
+    use HasFactory, Notifiable, HasApiTokens, LogsActivity;
 
     // Custom password reset notification
     public function sendPasswordResetNotification($token): void
@@ -34,6 +36,17 @@ class User extends Authenticatable
             'password'          => 'hashed',
             'role'              => 'string',
         ];
+    }
+
+    /**
+     * Configure activity log: track role, email and branch changes.
+     */
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['name', 'email', 'role', 'branch_id'])
+            ->logOnlyDirty()
+            ->useLogName('user');
     }
 
     // Relationships
@@ -64,7 +77,7 @@ class User extends Authenticatable
             'admin'    => 'Administrador',
             'manager'  => 'Gerente',
             'employee' => 'Empleado',
-            default    => $this->role,
+            default    => $this->role ?? 'Invitado',
         };
     }
 }

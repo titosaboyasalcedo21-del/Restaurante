@@ -42,6 +42,7 @@ class ProductApiController extends Controller
 
     public function show(Product $product): JsonResponse
     {
+        $this->authorize('view', $product);
         return response()->json($product->load('category', 'branches'));
     }
 

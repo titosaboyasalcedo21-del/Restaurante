@@ -16,7 +16,11 @@ class InventoryApiController extends Controller
     {
         $query = InventoryMovement::with('product', 'branch');
 
-        if ($request->filled('branch_id')) {
+        $user = $request->user();
+        // If not admin, restrict to their assigned branch
+        if ($user->role !== 'admin' && $user->branch_id) {
+            $query->where('branch_id', $user->branch_id);
+        } elseif ($request->filled('branch_id')) {
             $query->where('branch_id', $request->branch_id);
         }
 
@@ -43,43 +47,67 @@ class InventoryApiController extends Controller
 
     public function adjust(Request $request): JsonResponse
     {
+        $user = $request->user();
+        
+        // Employees can only register 'out' movements (sales)
+        $allowedTypes = $user->role === 'employee' ? ['out'] : ['in', 'out', 'adjust'];
+
         $validated = $request->validate([
             'product_id' => 'required|exists:products,id',
             'branch_id' => 'required|exists:branches,id',
-            'type' => 'required|in:in,out,adjust',
+            'type' => 'required|in:' . implode(',', $allowedTypes),
             'quantity' => 'required|integer|min:1',
             'reason' => 'nullable|string|max:255',
         ]);
 
-        $pivot = DB::table('branch_product')
-            ->where('branch_id', $validated['branch_id'])
-            ->where('product_id', $validated['product_id'])
-            ->first();
+        // Managers and Employees can only adjust inventory of their assigned branch
+        if ($user->role !== 'admin' && $user->branch_id && $validated['branch_id'] != $user->branch_id) {
+            return response()->json([
+                'message' => 'Solo puedes ajustar inventario de tu sucursal asignada.',
+            ], 403);
+        }
 
-        $previousStock = $pivot ? $pivot->stock : 0;
+        $movement = DB::transaction(function () use ($validated, $user) {
+            $pivot = DB::table('branch_product')
+                ->where('branch_id', $validated['branch_id'])
+                ->where('product_id', $validated['product_id'])
+                ->lockForUpdate()
+                ->first();
 
-        $newStock = match($validated['type']) {
-            'in' => $previousStock + $validated['quantity'],
-            'out' => max(0, $previousStock - $validated['quantity']),
-            'adjust' => $validated['quantity'],
-            default => $previousStock,
-        };
+            $previousStock = $pivot ? $pivot->stock : 0;
 
-        DB::table('branch_product')->updateOrInsert(
-            ['branch_id' => $validated['branch_id'], 'product_id' => $validated['product_id']],
-            ['stock' => $newStock, 'is_available' => true]
-        );
+            if (!$pivot) {
+                DB::table('branch_product')->insert([
+                    'branch_id' => $validated['branch_id'],
+                    'product_id' => $validated['product_id'],
+                    'stock' => 0,
+                    'is_available' => true
+                ]);
+            }
 
-        $movement = InventoryMovement::create([
-            'product_id' => $validated['product_id'],
-            'branch_id' => $validated['branch_id'],
-            'type' => $validated['type'],
-            'quantity' => $validated['quantity'],
-            'previous_stock' => $previousStock,
-            'new_stock' => $newStock,
-            'reason' => $validated['reason'],
-            'user_id' => $request->user()?->id,
-        ]);
+            $newStock = match($validated['type']) {
+                'in' => $previousStock + $validated['quantity'],
+                'out' => max(0, $previousStock - $validated['quantity']),
+                'adjust' => $validated['quantity'],
+                default => $previousStock,
+            };
+
+            DB::table('branch_product')
+                ->where('branch_id', $validated['branch_id'])
+                ->where('product_id', $validated['product_id'])
+                ->update(['stock' => $newStock]);
+
+            return InventoryMovement::create([
+                'product_id' => $validated['product_id'],
+                'branch_id' => $validated['branch_id'],
+                'type' => $validated['type'],
+                'quantity' => $validated['quantity'],
+                'previous_stock' => $previousStock,
+                'new_stock' => $newStock,
+                'reason' => $validated['reason'],
+                'user_id' => $user->id,
+            ]);
+        });
 
         return response()->json([
             'message' => 'Inventario ajustado',
@@ -89,17 +117,19 @@ class InventoryApiController extends Controller
 
     public function lowStock(Request $request): JsonResponse
     {
-        $query = Product::with('category')
-            ->whereHas('branches', function ($q) {
-                $q->whereRaw('branch_product.stock <= products.minimum_stock');
-            });
+        $user = $request->user();
+        $query = Product::with(['category', 'branches']);
 
-        if ($request->filled('branch_id')) {
-            $query->whereHas('branches', function ($q) use ($request) {
-                $q->where('branches.id', $request->branch_id)
-                  ->whereRaw('branch_product.stock <= products.minimum_stock');
-            });
-        }
+        // Base filter for low stock
+        $query->whereHas('branches', function ($q) use ($request, $user) {
+            // Apply branch restriction if not admin
+            if ($user->role !== 'admin' && $user->branch_id) {
+                $q->where('branches.id', $user->branch_id);
+            } elseif ($request->filled('branch_id')) {
+                $q->where('branches.id', $request->branch_id);
+            }
+            $q->whereRaw('branch_product.stock <= products.minimum_stock');
+        });
 
         $products = $query->get()->map(function ($product) {
             $branchStock = $product->branches->map(fn($b) => [

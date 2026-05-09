@@ -8,11 +8,13 @@ use App\Models\Product;
 use App\Models\Category;
 use App\Models\Branch;
 use App\Models\User;
+use App\Models\PurchaseOrder;
 use App\Policies\ProductPolicy;
 use App\Policies\CategoryPolicy;
 use App\Policies\BranchPolicy;
 use App\Policies\InventoryPolicy;
 use App\Policies\UserPolicy;
+use App\Policies\PurchaseOrderPolicy;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -26,6 +28,7 @@ class AppServiceProvider extends ServiceProvider
         Category::class => CategoryPolicy::class,
         Branch::class => BranchPolicy::class,
         User::class => UserPolicy::class,
+        PurchaseOrder::class => PurchaseOrderPolicy::class,
         'inventory' => InventoryPolicy::class,
     ];
 

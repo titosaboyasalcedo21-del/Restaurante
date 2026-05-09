@@ -3,49 +3,67 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        // For SQLite, we need to drop and recreate the table
-        // Since this is a new app, we can just drop the table and recreate it
-        // But first, let's check if we can modify the foreign keys differently
+        $driver = DB::getDriverName();
 
-        // For SQLite with Laravel, we use raw SQL to change the foreign key behavior
-        // Drop the existing foreign keys and recreate with restrictOnDelete
-        DB::statement('PRAGMA foreign_keys = OFF');
+        if ($driver === 'mysql') {
+            // In MySQL we can just drop and add the constraints
+            Schema::table('branch_product', function (Blueprint $table) {
+                $table->dropForeign(['branch_id']);
+                $table->dropForeign(['product_id']);
 
-        // Rename the table temporarily
-        Schema::rename('branch_product', 'branch_product_old');
+                $table->foreign('branch_id')
+                    ->references('id')->on('branches')
+                    ->onDelete('restrict');
+                $table->foreign('product_id')
+                    ->references('id')->on('products')
+                    ->onDelete('restrict');
+            });
+            return;
+        }
 
-        // Create new table with correct constraints
-        Schema::create('branch_product', function (Blueprint $table) {
-            $table->foreignId('branch_id')
-                ->constrained()
-                ->restrictOnDelete();
-            $table->foreignId('product_id')
-                ->constrained()
-                ->restrictOnDelete();
-            $table->integer('stock')->default(0);
-            $table->boolean('is_available')->default(true);
-            $table->primary(['branch_id', 'product_id']);
-        });
+        if ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = OFF');
+            
+            // Rename the table temporarily
+            Schema::rename('branch_product', 'branch_product_old');
 
-        // Copy data from old table
-        DB::statement('INSERT INTO branch_product (branch_id, product_id, stock, is_available)
-            SELECT branch_id, product_id, stock, is_available FROM branch_product_old');
+            // Create new table with correct constraints
+            Schema::create('branch_product', function (Blueprint $table) {
+                $table->foreignId('branch_id')
+                    ->constrained()
+                    ->restrictOnDelete();
+                $table->foreignId('product_id')
+                    ->constrained()
+                    ->restrictOnDelete();
+                $table->integer('stock')->default(0);
+                $table->boolean('is_available')->default(true);
+                $table->primary(['branch_id', 'product_id']);
+            });
 
-        // Drop old table
-        Schema::dropIfExists('branch_product_old');
+            // Copy data from old table
+            DB::statement('INSERT INTO branch_product (branch_id, product_id, stock, is_available)
+                SELECT branch_id, product_id, stock, is_available FROM branch_product_old');
 
-        DB::statement('PRAGMA foreign_keys = ON');
+            // Drop old table
+            Schema::dropIfExists('branch_product_old');
+            DB::statement('PRAGMA foreign_keys = ON');
+        }
     }
 
     public function down(): void
     {
-        // Same process in reverse - but with cascadeOnDelete
-        DB::statement('PRAGMA foreign_keys = OFF');
+        $driver = DB::getDriverName();
+        if ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = OFF');
+        } elseif ($driver === 'mysql') {
+            DB::statement('SET FOREIGN_KEY_CHECKS = 0');
+        }
 
         Schema::rename('branch_product', 'branch_product_old');
 
@@ -66,6 +84,10 @@ return new class extends Migration
 
         Schema::dropIfExists('branch_product_old');
 
-        DB::statement('PRAGMA foreign_keys = ON');
+        if ($driver === 'sqlite') {
+            DB::statement('PRAGMA foreign_keys = ON');
+        } elseif ($driver === 'mysql') {
+            DB::statement('SET FOREIGN_KEY_CHECKS = 1');
+        }
     }
 };

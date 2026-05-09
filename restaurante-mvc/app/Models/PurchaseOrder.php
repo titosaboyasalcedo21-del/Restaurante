@@ -6,10 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
 
 class PurchaseOrder extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, LogsActivity;
 
     protected $fillable = [
         'order_number', 'supplier_id', 'branch_id', 'user_id', 'status',
@@ -27,11 +29,22 @@ class PurchaseOrder extends Model
     ];
 
     // Status constants
-    public const STATUS_DRAFT = 'draft';
-    public const STATUS_PENDING = 'pending';
-    public const STATUS_APPROVED = 'approved';
-    public const STATUS_RECEIVED = 'received';
+    public const STATUS_DRAFT     = 'draft';
+    public const STATUS_PENDING   = 'pending';
+    public const STATUS_APPROVED  = 'approved';
+    public const STATUS_RECEIVED  = 'received';
     public const STATUS_CANCELLED = 'cancelled';
+
+    /**
+     * Configure activity log: track status transitions and key financial fields.
+     */
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['status', 'order_number', 'supplier_id', 'branch_id', 'total', 'cancellation_reason'])
+            ->logOnlyDirty()
+            ->useLogName('purchase_order');
+    }
 
     // Relationships
     public function supplier(): BelongsTo

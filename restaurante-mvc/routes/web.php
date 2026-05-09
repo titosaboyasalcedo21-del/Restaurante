@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\BranchController;
@@ -11,157 +12,94 @@ use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\ExportController;
 
 // Redirect root to login or dashboard
-Route::get('/', fn() => auth()->check() ? redirect()->route('dashboard') : redirect()->route('login'));
+Route::get('/', fn() => \Illuminate\Support\Facades\Auth::check() ? redirect()->route('dashboard') : redirect()->route('login'));
 
-// Dashboard - accessible by Admin and Manager
-Route::get('/dashboard', function() {
-    $user = auth()->user();
-
-    if ($user->isAdmin() || $user->isManager()) {
-        // Get dashboard stats
-        $stats = [];
-
-        // Products active count
-        $stats['products'] = \App\Models\Product::when(!$user->isAdmin(), function($query) {
-            return $query->active();
-        })->count();
-
-        // Branches count (admin only)
-        $stats['branches'] = $user->isAdmin() ? \App\Models\Branch::count() : 1;
-
-        // Low stock products
-        $stats['lowStock'] = \App\Models\Product::whereHas('branches', function($q) {
-            $q->whereRaw('branch_product.stock <= products.minimum_stock');
-        })->count();
-
-        // Today's movements
-        $stats['movementsToday'] = \App\Models\InventoryMovement::whereDate('created_at', today())
-            ->when(!$user->isAdmin(), function($query) use ($user) {
-                return $query->where('branch_id', $user->branch_id);
-            })
-            ->count();
-
-        // Recent movements
-        $recentMovements = \App\Models\InventoryMovement::with(['product', 'branch', 'user'])
-            ->when(!$user->isAdmin(), function($query) use ($user) {
-                return $query->where('branch_id', $user->branch_id);
-            })
-            ->latest()
-            ->limit(8)
-            ->get();
-
-        // Low stock items for panel
-        $lowStockItems = \App\Models\Product::with('category')
-            ->whereHas('branches', function($q) {
-                $q->whereRaw('branch_product.stock <= products.minimum_stock');
-            })
-            ->get()
-            ->map(function($product) {
-                $totalStock = $product->branches->sum('pivot.stock');
-                $product->total_stock = $totalStock;
-                return $product;
-            })
-            ->sortBy('total_stock')
-            ->take(5);
-
-        return view('dashboard', compact('stats', 'recentMovements', 'lowStockItems'));
-    }
-
-    // Employee goes to inventory
-    return redirect()->route('inventory.index');
-})->name('dashboard')->middleware('auth');
+// Dashboard - accessible by all authenticated users (logic scoped by role inside controller)
+Route::get('/dashboard', [DashboardController::class, 'index'])
+    ->name('dashboard')
+    ->middleware('auth');
 
 // Authentication routes (login, register, etc.)
 require __DIR__.'/auth.php';
 
 // Protected routes with role-based access control
+//
+// The RoleMiddleware uses a numeric hierarchy: admin=3, manager=2, employee=1.
+// 'role:admin'    → only admin
+// 'role:manager'  → manager AND admin (level >= 2)
+// 'role:employee' → employee, manager AND admin (level >= 1, i.e. any authenticated user)
+//
+// To avoid duplicate named routes, each route is declared ONCE under the
+// highest role that restricts it. Lower roles inherit access via the hierarchy.
+
 Route::middleware(['auth'])->group(function () {
 
-    // ===== ADMIN: Full Access =====
+    // ===== ADMIN ONLY: Full CRUD, User Management, Exports =====
     Route::middleware(['role:admin'])->group(function () {
-        // Products - full CRUD
-        Route::resource('products', ProductController::class);
+        // Products - full CRUD (managers/employees use read-only routes below)
+        Route::post('products', [ProductController::class, 'store'])->name('products.store');
+        Route::get('products/create', [ProductController::class, 'create'])->name('products.create');
+        Route::put('products/{product}', [ProductController::class, 'update'])->name('products.update');
+        Route::patch('products/{product}', [ProductController::class, 'update']);
+        Route::delete('products/{product}', [ProductController::class, 'destroy'])->name('products.destroy');
+        Route::get('products/{product}/edit', [ProductController::class, 'edit'])->name('products.edit');
         Route::get('products/{product}/toggle-status', [ProductController::class, 'toggleStatus'])->name('products.toggle-status');
 
         // Categories - full CRUD
-        Route::resource('categories', CategoryController::class);
+        Route::post('categories', [CategoryController::class, 'store'])->name('categories.store');
+        Route::get('categories/create', [CategoryController::class, 'create'])->name('categories.create');
+        Route::put('categories/{category}', [CategoryController::class, 'update'])->name('categories.update');
+        Route::patch('categories/{category}', [CategoryController::class, 'update']);
+        Route::delete('categories/{category}', [CategoryController::class, 'destroy'])->name('categories.destroy');
+        Route::get('categories/{category}/edit', [CategoryController::class, 'edit'])->name('categories.edit');
         Route::patch('categories/{category}/toggle-status', [CategoryController::class, 'toggleStatus'])->name('categories.toggle-status');
 
         // Branches - full CRUD
-        Route::resource('branches', BranchController::class);
-        Route::get('branches/{branch}/products', [BranchController::class, 'products'])->name('branches.products');
-        Route::post('branches/{branch}/products', [BranchController::class, 'assignProduct'])->name('branches.products.assign');
-        Route::delete('branches/{branch}/products/{product}', [BranchController::class, 'removeProduct'])->name('branches.products.remove');
-
-        // Inventory - full access
-        Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
-        Route::get('inventory/movements', [InventoryController::class, 'movements'])->name('inventory.movements');
-        Route::match(['get', 'post'], 'inventory/adjust', [InventoryController::class, 'adjust'])->name('inventory.adjust');
-        Route::get('inventory/low-stock', [InventoryController::class, 'lowStock'])->name('inventory.low-stock');
-        Route::get('inventory/report', [InventoryController::class, 'report'])->name('inventory.report');
+        Route::post('branches', [BranchController::class, 'store'])->name('branches.store');
+        Route::get('branches/create', [BranchController::class, 'create'])->name('branches.create');
+        Route::put('branches/{branch}', [BranchController::class, 'update'])->name('branches.update');
+        Route::patch('branches/{branch}', [BranchController::class, 'update']);
+        Route::delete('branches/{branch}', [BranchController::class, 'destroy'])->name('branches.destroy');
+        Route::get('branches/{branch}/edit', [BranchController::class, 'edit'])->name('branches.edit');
 
         // Users - full management
         Route::resource('users', UserController::class);
-        // Reset password by admin
         Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])
-            ->middleware(['auth', 'role:admin'])
             ->name('users.reset-password');
+
+        // Inventory report (admin only)
+        Route::get('inventory/report', [InventoryController::class, 'report'])->name('inventory.report');
     });
 
-    // ===== MANAGER: Limited Access (their branch only) =====
+    // ===== MANAGER+: Branch product management extras =====
     Route::middleware(['role:manager'])->group(function () {
-        // Categories - VIEW ONLY
-        Route::get('categories', [CategoryController::class, 'index'])->name('categories.index');
-        Route::get('categories/{category}', [CategoryController::class, 'show'])->name('categories.show');
-
-        // Products - VIEW ALL, but can only edit stock/availability in their branch
-        Route::get('products', [ProductController::class, 'index'])->name('products.index');
-        Route::get('products/{product}', [ProductController::class, 'show'])->name('products.show');
-
-        // Branches - VIEW their branch, EDIT contact info only
-        Route::get('branches', [BranchController::class, 'index'])->name('branches.index');
-        Route::get('branches/{branch}', [BranchController::class, 'show'])->name('branches.show');
-
-        // Manager can only access their assigned branch
-        Route::get('branches/{branch}/products', [BranchController::class, 'products'])->name('branches.products');
-        Route::post('branches/{branch}/products', [BranchController::class, 'assignProduct'])->name('branches.products.assign');
         Route::patch('branches/{branch}/products/{product}/toggle-availability', [BranchController::class, 'toggleProductAvailability'])->name('branches.products.toggle-availability');
         Route::patch('branches/{branch}/products/{product}/update-stock', [BranchController::class, 'updateProductStock'])->name('branches.products.update-stock');
-        Route::delete('branches/{branch}/products/{product}', [BranchController::class, 'removeProduct'])->name('branches.products.remove');
-
-        // Inventory - in, out, adjust, transfer (only their branch)
-        Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
-        Route::get('inventory/movements', [InventoryController::class, 'movements'])->name('inventory.movements');
-        Route::match(['get', 'post'], 'inventory/adjust', [InventoryController::class, 'adjust'])->name('inventory.adjust');
-        Route::get('inventory/low-stock', [InventoryController::class, 'lowStock'])->name('inventory.low-stock');
-        Route::get('inventory/report', [InventoryController::class, 'report'])->name('inventory.report');
-
-        // Users - VIEW employees of their branch only
-        Route::get('users', [UserController::class, 'index'])->name('users.index');
-        Route::get('users/{user}', [UserController::class, 'show'])->name('users.show');
     });
 
-    // ===== EMPLOYEE: Very Limited Access =====
+    // ===== ALL AUTHENTICATED USERS (employee level 1+) =====
+    // Each route is declared once here and protected by the role hierarchy.
     Route::middleware(['role:employee'])->group(function () {
-        // Categories - VIEW ONLY
-        Route::get('categories', [CategoryController::class, 'index'])->name('categories.index');
-        Route::get('categories/{category}', [CategoryController::class, 'show'])->name('categories.show');
-
-        // Products - VIEW ONLY (active products in their branch)
+        // Products - read only for employee, full access for admin (write routes declared above)
         Route::get('products', [ProductController::class, 'index'])->name('products.index');
         Route::get('products/{product}', [ProductController::class, 'show'])->name('products.show');
 
-        // Branches - VIEW ONLY (name and address)
+        // Categories - read only
+        Route::get('categories', [CategoryController::class, 'index'])->name('categories.index');
+        Route::get('categories/{category}', [CategoryController::class, 'show'])->name('categories.show');
+
+        // Branches - read only (admin write routes declared above)
         Route::get('branches', [BranchController::class, 'index'])->name('branches.index');
         Route::get('branches/{branch}', [BranchController::class, 'show'])->name('branches.show');
+        Route::get('branches/{branch}/products', [BranchController::class, 'products'])->name('branches.products');
+        Route::post('branches/{branch}/products', [BranchController::class, 'assignProduct'])->name('branches.products.assign');
+        Route::delete('branches/{branch}/products/{product}', [BranchController::class, 'removeProduct'])->name('branches.products.remove');
 
-        // Inventory - VIEW stock, REGISTER OUT movements only
+        // Inventory - employees can adjust (type restricted inside controller)
         Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
         Route::get('inventory/movements', [InventoryController::class, 'movements'])->name('inventory.movements');
         Route::match(['get', 'post'], 'inventory/adjust', [InventoryController::class, 'adjust'])->name('inventory.adjust');
         Route::get('inventory/low-stock', [InventoryController::class, 'lowStock'])->name('inventory.low-stock');
-
-        // No access to users module
     });
 });
 
@@ -180,8 +118,8 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
     Route::patch('suppliers/{supplier}/toggle-status', [SupplierController::class, 'toggleStatus'])->name('suppliers.toggle-status');
 });
 
-// Purchase Orders (Admin and Manager)
-Route::middleware(['auth'])->group(function () {
+// Purchase Orders (Admin and Manager only — NOT employees)
+Route::middleware(['auth', 'role:manager'])->group(function () {
     Route::resource('purchase-orders', PurchaseOrderController::class);
     Route::post('purchase-orders/{purchaseOrder}/items', [PurchaseOrderController::class, 'addItem'])->name('purchase-orders.add-item');
     Route::delete('purchase-orders/{purchaseOrder}/items/{item}', [PurchaseOrderController::class, 'removeItem'])->name('purchase-orders.remove-item');

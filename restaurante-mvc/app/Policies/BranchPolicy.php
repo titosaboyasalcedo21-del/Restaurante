@@ -8,14 +8,16 @@ use App\Models\User;
 class BranchPolicy
 {
     /**
-     * Give full access to admins
+     * Grant admins full access to every action in this policy.
+     * Returning true here short-circuits all other policy methods for admins,
+     * so every method below only needs to handle manager/employee logic.
      */
     public function before(User $user): ?bool
     {
         if ($user->isAdmin()) {
-            return true;
+            return true; // Admin bypasses all checks below
         }
-        return null;
+        return null; // Let the specific method decide for other roles
     }
 
     /**
@@ -75,13 +77,19 @@ class BranchPolicy
 
     /**
      * Determine if the user can update branches.
-     * Admin: Yes (any branch)
-     * Manager: Only contact info (phone, email) of their branch
-     * Employee: No
+     *
+     * Admins bypass this via before() and can update anything.
+     * Managers can only update contact info (phone, email) through the
+     * dedicated updateContactInfo() policy method — not full update.
+     * Employees cannot update branches at all.
+     *
+     * Returning false here intentionally blocks direct Route::resource update
+     * for non-admins. Contact-info updates for managers go through
+     * updateContactInfo() which has its own check.
      */
     public function update(User $user, Branch $branch): bool
     {
-        return false; // Handled by updateContactInfo
+        return false; // Admins allowed via before(). Non-admins blocked here.
     }
 
     /**
@@ -102,35 +110,31 @@ class BranchPolicy
 
     /**
      * Determine if the user can delete branches.
-     * Admin: Yes
-     * Manager: No
-     * Employee: No
+     *
+     * Only admins can delete branches (allowed via before()).
+     * This method returns false so managers and employees are explicitly denied.
      */
     public function delete(User $user, Branch $branch): bool
     {
-        return false; // Only admin can delete
+        return false; // Only admin can delete (admin allowed via before()).
     }
 
     /**
-     * Determine if the user can restore branches.
-     * Admin: Yes
-     * Manager: No
-     * Employee: No
+     * Determine if the user can restore a soft-deleted branch.
+     * Only admins can do this (allowed via before()).
      */
     public function restore(User $user, Branch $branch): bool
     {
-        return false; // Only admin can restore
+        return false; // Only admin can restore (admin allowed via before()).
     }
 
     /**
      * Determine if the user can permanently delete branches.
-     * Admin: Yes
-     * Manager: No
-     * Employee: No
+     * Only admins can do this (allowed via before()).
      */
     public function forceDelete(User $user, Branch $branch): bool
     {
-        return false; // Only admin can force delete
+        return false; // Only admin can force delete (admin allowed via before()).
     }
 
     /**

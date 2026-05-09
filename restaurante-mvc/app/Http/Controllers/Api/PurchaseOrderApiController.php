@@ -48,6 +48,13 @@ class PurchaseOrderApiController extends Controller
             'items.*.unit_price' => 'required|numeric|min:0',
         ]);
 
+        $user = $request->user();
+        if ($user->role !== 'admin' && $user->branch_id && $validated['branch_id'] != $user->branch_id) {
+            return response()->json([
+                'message' => 'Solo puedes crear órdenes de compra para tu sucursal asignada.',
+            ], 403);
+        }
+
         $order = PurchaseOrder::create([
             'order_number' => PurchaseOrder::generateOrderNumber(),
             'supplier_id' => $validated['supplier_id'],
@@ -82,6 +89,7 @@ class PurchaseOrderApiController extends Controller
      */
     public function show(PurchaseOrder $purchaseOrder): JsonResponse
     {
+        $this->authorize('view', $purchaseOrder);
         return response()->json([
             'purchase_order' => $purchaseOrder->load(['supplier', 'branch', 'user', 'items.product']),
         ]);
@@ -92,6 +100,7 @@ class PurchaseOrderApiController extends Controller
      */
     public function update(Request $request, PurchaseOrder $purchaseOrder): JsonResponse
     {
+        $this->authorize('update', $purchaseOrder);
         if (!in_array($purchaseOrder->status, [PurchaseOrder::STATUS_DRAFT, PurchaseOrder::STATUS_PENDING])) {
             return response()->json([
                 'message' => 'No se puede modificar una orden en estado ' . $purchaseOrder->status_label,
@@ -119,6 +128,7 @@ class PurchaseOrderApiController extends Controller
      */
     public function destroy(PurchaseOrder $purchaseOrder): JsonResponse
     {
+        $this->authorize('delete', $purchaseOrder);
         if (!in_array($purchaseOrder->status, [PurchaseOrder::STATUS_DRAFT, PurchaseOrder::STATUS_CANCELLED])) {
             return response()->json([
                 'message' => 'No se puede eliminar una orden en estado ' . $purchaseOrder->status_label,
@@ -137,6 +147,7 @@ class PurchaseOrderApiController extends Controller
      */
     public function approve(PurchaseOrder $purchaseOrder): JsonResponse
     {
+        $this->authorize('manage', $purchaseOrder);
         if ($purchaseOrder->status !== PurchaseOrder::STATUS_PENDING) {
             return response()->json([
                 'message' => 'Solo se pueden aprobar ordenes pendientes',
@@ -158,6 +169,7 @@ class PurchaseOrderApiController extends Controller
      */
     public function receive(PurchaseOrder $purchaseOrder): JsonResponse
     {
+        $this->authorize('manage', $purchaseOrder);
         if ($purchaseOrder->status !== PurchaseOrder::STATUS_APPROVED) {
             return response()->json([
                 'message' => 'Solo se pueden recibir ordenes aprobadas',
@@ -182,6 +194,7 @@ class PurchaseOrderApiController extends Controller
      */
     public function cancel(Request $request, PurchaseOrder $purchaseOrder): JsonResponse
     {
+        $this->authorize('update', $purchaseOrder);
         if (in_array($purchaseOrder->status, [PurchaseOrder::STATUS_RECEIVED, PurchaseOrder::STATUS_CANCELLED])) {
             return response()->json([
                 'message' => 'No se puede cancelar una orden ' . $purchaseOrder->status_label,

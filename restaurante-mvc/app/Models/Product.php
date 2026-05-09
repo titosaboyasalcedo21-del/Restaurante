@@ -8,10 +8,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Auth;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Spatie\Activitylog\LogOptions;
+use App\Models\Supplier;
+use App\Models\ProductPriceHistory;
 
 class Product extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, LogsActivity;
 
     protected $fillable = [
         'name', 'description', 'sku', 'price', 'cost',
@@ -28,6 +33,17 @@ class Product extends Model
         'expiry_date'   => 'date',
         'shelf_days'    => 'integer',
     ];
+
+    /**
+     * Configure activity log: log all fillable attributes under the 'product' log.
+     */
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly($this->fillable)
+            ->logOnlyDirty()          // Only log attributes that actually changed
+            ->useLogName('product');
+    }
 
     // Relationships
     public function category(): BelongsTo
@@ -95,7 +111,7 @@ class Product extends Model
     public function getBarcodeSvgAttribute(): string
     {
         $generator = new \Picqer\Barcode\BarcodeGeneratorSVG();
-        return $generator->getBarcode($this->sku, \Picqer\Barcode\BarcodeGenerator::TYPE_CODE128, 2, 60);
+        return $generator->getBarcode($this->sku, \Picqer\Barcode\BarcodeGenerator::TYPE_CODE_128, 2, 60);
     }
 
     // Record price change
@@ -105,7 +121,7 @@ class Product extends Model
 
         ProductPriceHistory::create([
             'product_id' => $this->id,
-            'user_id' => auth()->id(),
+            'user_id' => Auth::id(),
             'old_price' => $lastPrice?->new_price ?? $this->getOriginal('price'),
             'new_price' => $this->price,
             'old_cost' => $lastPrice?->new_cost ?? $this->getOriginal('cost'),

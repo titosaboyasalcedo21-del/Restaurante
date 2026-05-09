@@ -81,7 +81,19 @@ class ProductController extends Controller
             $validated['image'] = $this->storeImage($request->file('image'));
         }
 
+        // Capture original price/cost before the update to detect changes
+        $priceChanged = isset($validated['price']) && (float) $validated['price'] !== (float) $product->price;
+        $costChanged  = isset($validated['cost'])  && (float) $validated['cost']  !== (float) $product->cost;
+
         $product->update($validated);
+
+        // Record a price history entry whenever price or cost changes
+        if ($priceChanged || $costChanged) {
+            $product->recordPriceChange(
+                reason: 'Edición manual desde panel de administración',
+                changeType: 'manual'
+            );
+        }
 
         return redirect()->route('products.index')->with('success', 'Producto actualizado exitosamente.');
     }
@@ -132,7 +144,7 @@ class ProductController extends Controller
      */
     private function storeImage($file): string
     {
-        $extension = $file->getClientOriginalExtension();
+        $extension = $file->extension();
         $filename = Str::uuid() . '.' . $extension;
         return $file->storeAs('products', $filename, 'public');
     }

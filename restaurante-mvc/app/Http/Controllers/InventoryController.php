@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\InventoryMovement;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class InventoryController extends Controller
 {
@@ -15,7 +16,8 @@ class InventoryController extends Controller
      */
     private function getManagerBranchId(): ?int
     {
-        $user = auth()->user();
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
         if ($user && $user->isManager() && $user->branch_id) {
             return $user->branch_id;
         }
@@ -95,7 +97,8 @@ class InventoryController extends Controller
 
     public function adjust(Request $request)
     {
-        $user = auth()->user();
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
         $managerBranchId = $this->getManagerBranchId();
 
         // Managers can only adjust inventory in their branch
@@ -213,37 +216,50 @@ class InventoryController extends Controller
         ?string $reason = null,
         ?string $reference = null
     ): void {
-        $pivot = DB::table('branch_product')
-            ->where('branch_id', $branchId)
-            ->where('product_id', $productId)
-            ->first();
+        DB::transaction(function () use ($productId, $branchId, $type, $quantity, $reason, $reference) {
+            // Lock the row for update to prevent race conditions
+            $pivot = DB::table('branch_product')
+                ->where('branch_id', $branchId)
+                ->where('product_id', $productId)
+                ->lockForUpdate()
+                ->first();
 
-        $previousStock = $pivot ? $pivot->stock : 0;
+            $previousStock = $pivot ? $pivot->stock : 0;
 
-        $newStock = match($type) {
-            InventoryMovement::TYPE_IN     => $previousStock + $quantity,
-            InventoryMovement::TYPE_OUT    => max(0, $previousStock - $quantity),
-            InventoryMovement::TYPE_ADJUST => max(0, $quantity),
-            InventoryMovement::TYPE_TRANSFER => max(0, $previousStock - $quantity),
-            default                       => $previousStock,
-        };
+            if (!$pivot) {
+                DB::table('branch_product')->insert([
+                    'branch_id' => $branchId,
+                    'product_id' => $productId,
+                    'stock' => 0,
+                    'is_available' => true
+                ]);
+            }
 
-        DB::table('branch_product')->updateOrInsert(
-            ['branch_id' => $branchId, 'product_id' => $productId],
-            ['stock' => $newStock, 'is_available' => true]
-        );
+            $newStock = match($type) {
+                InventoryMovement::TYPE_IN       => $previousStock + $quantity,
+                InventoryMovement::TYPE_OUT      => max(0, $previousStock - $quantity),
+                InventoryMovement::TYPE_ADJUST   => max(0, $quantity),
+                InventoryMovement::TYPE_TRANSFER => max(0, $previousStock - $quantity),
+                default                          => $previousStock,
+            };
 
-        InventoryMovement::create([
-            'product_id'     => $productId,
-            'branch_id'      => $branchId,
-            'type'           => $type,
-            'quantity'       => $quantity,
-            'previous_stock' => $previousStock,
-            'new_stock'      => $newStock,
-            'reason'         => $reason,
-            'reference'      => $reference,
-            'user_id'        => auth()->id(),
-        ]);
+            DB::table('branch_product')
+                ->where('branch_id', $branchId)
+                ->where('product_id', $productId)
+                ->update(['stock' => $newStock]);
+
+            InventoryMovement::create([
+                'product_id'     => $productId,
+                'branch_id'      => $branchId,
+                'type'           => $type,
+                'quantity'       => $quantity,
+                'previous_stock' => $previousStock,
+                'new_stock'      => $newStock,
+                'reason'         => $reason,
+                'reference'      => $reference,
+                'user_id'        => Auth::id(),
+            ]);
+        });
     }
 
     public function lowStock()
@@ -293,7 +309,7 @@ class InventoryController extends Controller
 
         // Use database grouping for better performance
         $summary = $query->clone()
-            ->select('type', \DB::raw('count(*) as total'))
+            ->select('type', DB::raw('count(*) as total'))
             ->groupBy('type')
             ->pluck('total', 'type')
             ->toArray();

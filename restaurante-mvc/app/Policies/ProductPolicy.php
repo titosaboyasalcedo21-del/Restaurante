@@ -37,7 +37,13 @@ class ProductPolicy
      */
     public function view(User $user, Product $product): bool
     {
-        return true; // All roles can view
+        // Admin and Manager can view any product in the catalog
+        if ($user->isAdmin() || $user->isManager()) {
+            return true;
+        }
+
+        // Employee can only view products assigned to their branch
+        return $product->branches()->where('branch_id', $user->branch_id)->exists();
     }
 
     /**

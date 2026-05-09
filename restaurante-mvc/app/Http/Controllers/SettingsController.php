@@ -39,15 +39,13 @@ class SettingsController extends Controller
         ]);
 
         foreach ($validated as $key => $value) {
-            $setting = Setting::where('key', $key)->first();
-            if ($setting) {
-                $type = match ($key) {
-                    'tax_igv_rate', 'low_stock_threshold', 'expiry_warning_days' => 'number',
-                    'company_email' => 'string',
-                    default => $setting->type,
-                };
-                $setting->update(['value' => (string) $value, 'type' => $type]);
-            }
+            $type = match ($key) {
+                'tax_igv_rate', 'low_stock_threshold', 'expiry_warning_days' => 'number',
+                default => 'string',
+            };
+
+            // Setting::set() updates the DB AND invalidates the cache for this key
+            Setting::set($key, (string) $value, $type);
         }
 
         return redirect()->route('settings.index')

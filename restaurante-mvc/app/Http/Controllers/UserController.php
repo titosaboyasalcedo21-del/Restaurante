@@ -9,16 +9,20 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rules\Password;
 
 class UserController extends Controller
 {
     public function index(Request $request)
     {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
         $query = User::with('branch');
 
         // Filter by branch for managers
-        if (auth()->user()->isManager()) {
-            $query->where('branch_id', auth()->user()->branch_id);
+        if ($user->isManager()) {
+            $query->where('branch_id', $user->branch_id);
         }
 
         if ($request->filled('search')) {
@@ -53,13 +57,13 @@ class UserController extends Controller
         $validated = $request->validate([
             'name'     => 'required|string|max:255',
             'email'    => 'required|email|unique:users,email',
-            'password' => 'required|string|min:8|confirmed',
+            'password' => ['required', 'string', Password::min(8)->letters()->numbers(), 'confirmed'],
             'role'     => 'required|in:admin,manager,employee',
             'branch_id' => 'nullable|exists:branches,id',
         ]);
 
         // Only admins can create other admins
-        if ($validated['role'] === 'admin' && !auth()->user()->isAdmin()) {
+        if ($validated['role'] === 'admin' && !Auth::user()->isAdmin()) {
             abort(403, 'No tienes permiso para crear administradores.');
         }
 
@@ -95,7 +99,7 @@ class UserController extends Controller
         ]);
 
         // Prevent removing own admin role
-        if ($user->id === auth()->id() && $user->isAdmin() && $validated['role'] !== 'admin') {
+        if ($user->id === Auth::id() && $user->isAdmin() && $validated['role'] !== 'admin') {
             return back()->with('error', 'No puedes cambiar tu propio rol de administrador.');
         }
 
@@ -112,7 +116,7 @@ class UserController extends Controller
     public function destroy(User $user)
     {
         // Prevent self-deletion
-        if ($user->id === auth()->id()) {
+        if ($user->id === Auth::id()) {
             return back()->with('error', 'No puedes eliminar tu propio usuario.');
         }
 
@@ -123,18 +127,21 @@ class UserController extends Controller
 
     public function resetPassword(Request $request, User $user)
     {
+        /** @var \App\Models\User $currentUser */
+        $currentUser = Auth::user();
+
         // Only admin can reset passwords
-        if (!auth()->user()->isAdmin()) {
+        if (!$currentUser->isAdmin()) {
             return back()->with('error', 'No tienes permiso para realizar esta acción.');
         }
 
         // Prevent resetting own password
-        if ($user->id === auth()->id()) {
+        if ($user->id === Auth::id()) {
             return back()->with('error', 'No puedes resetear tu propia contraseña desde aquí.');
         }
 
-        // Generate new random password (10 chars with letters and numbers)
-        $newPassword = Str::random(10);
+        // Generate new random password (12 chars with letters and numbers)
+        $newPassword = Str::password(12, true, true, false, false);
 
         // Update user password and force change
         $user->update([
